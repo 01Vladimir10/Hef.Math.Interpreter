@@ -21,7 +21,7 @@ jobs:
     - name: Build
       run: dotnet build --no-restore
     - name: Test
-      run: dotnet run
+      run: cd Test && dotnet run
     - name: Add nuget source
       run: cd Test && dotnet nuget add source --username 01Vladimir10 --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/Hef.Math.Interpreter.NetCore/index.json"
     - name: Pack
