@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <package >
   <metadata>
-    <id>Hef.Math.Interpreter</id>
-    <version>1.1.1</version>
-    <authors>François Ségaud</authors>
+    <id>Hef.Math.Interpreter.NetCore</id>
+    <version>1.1.2</version>
+    <authors>François Ségaud, Vladimir Gonzalez</authors>
     <owners>fseg</owners>
     <licenseUrl>https://opensource.org/licenses/MIT</licenseUrl>
     <projectUrl>https://github.com/fsegaud/Hef.Math.Interpreter</projectUrl>
