@@ -4,5 +4,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Hef.Math</RootNamespace>
+    <Version>1.1.0</Version>
+    <Authors>Vladimir Gonzalez</Authors>
+    <Company>Super Lagos S.A.</Company>
+    <RepositoryUrl>https://github.com/Super-Lagos/Hef.Math.Interpreter.NetCore</RepositoryUrl>
+    <PackageDescription>A simple and extensible arithmetic calculator, it is a fork of: https://github.com/fsegaud/Hef.Math.Interpreter</PackageDescription>
   </PropertyGroup>
 </Project>
