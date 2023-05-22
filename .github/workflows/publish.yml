@@ -16,16 +16,17 @@ jobs:
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: 7.0.x
+        source-url: https://nuget.pkg.github.com/Super-Lagos/index.json
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
     - name: Test
       run: cd Test && dotnet run
-    - name: Add nuget source
-      run: cd Library && dotnet nuget add source --username 01Vladimir10 --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/Hef.Math.Interpreter.NetCore/index.json"
     - name: Pack
       run: cd Library && dotnet pack --configuration Release
     - name: Publish
-      run: cd Library && dotnet nuget push bin/Release/*.nupkg
+      run: dotnet nuget push Library/bin/Release/*.nupkg
       
