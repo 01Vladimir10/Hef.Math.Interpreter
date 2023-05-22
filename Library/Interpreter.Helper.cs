@@ -20,29 +20,28 @@
 // SOFTWARE.
 #endregion
 
-namespace Hef.Math
+namespace Hef.Math;
+
+public partial class Interpreter
 {
-    public partial class Interpreter
+    #region Constants
+
+    private const double True = 1d;
+    private const double False = 0d;
+
+    #endregion
+
+    #region Static Functions
+
+    private static bool DoubleToBool(double value)
     {
-        #region Constants
-
-        private const double TRUE = 1d;
-        private const double FALSE = 0d;
-
-        #endregion
-
-        #region Static Functions
-
-        private static bool DoubleToBool(double value)
-        {
-            return System.Math.Abs(value - 1d) < double.Epsilon;
-        }
-
-        private static double BoolToDouble(bool value)
-        {
-            return value ? 1d : 0d;
-        }
-
-        #endregion
+        return System.Math.Abs(value - 1d) < double.Epsilon;
     }
+
+    private static double BoolToDouble(bool value)
+    {
+        return value ? 1d : 0d;
+    }
+
+    #endregion
 }

@@ -20,530 +20,507 @@
 // SOFTWARE.
 #endregion
 
-namespace Hef.Math
+namespace Hef.Math;
+
+/// <summary>
+/// An interpreter able to resolve a mathmatical formula.
+/// </summary>
+public partial class Interpreter : IDisposable
 {
-    /// <summary>
-    /// An interpreter able to resolve a mathmatical formula.
-    /// </summary>
-    public partial class Interpreter : System.IDisposable
+    #region Constants
+
+    private const string VarPrefixStr       = "$";
+    private const char   VarPrefixChar      = '$';
+    private const string OpMarkStr          = "_";
+    private const char   OpMarkChar         = '_';
+    private const string LongOpMark0Str     = " _";
+    private const string LongOpMark1Str     = "_ ";
+    private const string OpenBracketStr     = "(";
+    private const string ClosingBracketStr  = ")";
+    private const char   OpenBracketChar    = '(';
+    private const char   ClosingBracketChar = ')';
+    private const string WhiteSpaceStr      = " ";
+    private const char   WhiteSpaceChar     = ' ';
+    private const char   CommaSeparatorChar = ',';
+
+    #endregion
+
+    #region Static
+
+    private static readonly Cache<string, Node> Cache;
+    private static readonly Dictionary<string, double> GlobalVariables;
+    private static readonly Random Random;
+
+    #endregion
+
+    #region Members
+
+    private Dictionary<string, double>? _variables;
+    private Dictionary<string, IInterpreterContext>? _namedContext;
+    private bool _disposed;
+
+    #endregion
+
+    #region Enumerations
+
+    private enum OperatorType
     {
-        #region Constants
+        Const = 0,
+        Unary,
+        Binary
+    }
 
-        private const string VarPrefixStr       = "$";
-        private const char   VarPrefixChar      = '$';
-        private const string OpMarkStr          = "_";
-        private const char   OpMarkChar         = '_';
-        private const string LongOpMark0Str     = " _";
-        private const string LongOpMark1Str     = "_ ";
-        private const string OpenBracketStr     = "(";
-        private const string ClosingBracketStr  = ")";
-        private const char   OpenBracketChar    = '(';
-        private const char   ClosingBracketChar = ')';
-        private const string WhiteSpaceStr      = " ";
-        private const char   WhiteSpaceChar     = ' ';
-        private const char   CommaSeparatorChar = ',';
+    #endregion
 
-        #endregion
+    #region Constructors
 
-        #region Static
+    static Interpreter()
+    {
+        Cache = new Cache<string, Node>(64);
+        GlobalVariables = new Dictionary<string, double>();
+        Random = new Random();
 
-        private static Hef.Collection.Cache<string, Node> cache;
-        private static System.Collections.Generic.Dictionary<string, double> globalVariables;
-        private static System.Random Random;
+        LoadOperators();
+    }
 
-        #endregion
+    /// <summary>
+    /// Instantiates a new instance of Interpreter.
+    /// </summary>
+    public Interpreter()
+    {
+        _variables = new Dictionary<string, double>();
+        _namedContext = new Dictionary<string, IInterpreterContext>();
+    }
 
-        #region Members
+    #endregion
 
-        private System.Collections.Generic.Dictionary<string, double> variables;
-        private System.Collections.Generic.Dictionary<string, IInterpreterContext> namedContext;
-        private bool disposed = false;
+    #region Destructor
 
-        #endregion
+    /// <summary>
+    /// Destructor.
+    /// </summary>
+    ~Interpreter()
+    {
+        Dispose(false);
+    }
 
-        #region Enumerations
+    #endregion
 
-        private enum OperatorType
+    #region Public Functions
+
+    /// <summary>
+    /// Sets a variable to be used in the formula.
+    /// </summary>
+    /// <param name="name">The variable name.</param>
+    /// <param name="value">The variable value.</param>
+    public void SetVar(string name, double value)
+    {
+        name = name.StartsWith(VarPrefixStr) ? name : $"{VarPrefixStr}{name}";
+        _variables ??= new Dictionary<string, double>();
+        _variables[name] = value;
+    }
+
+    /// <summary>
+    /// Sets a variable to be used in the formula. This variable will be global to ALL interpreters.
+    /// </summary>
+    /// <param name="name">The variable name.</param>
+    /// <param name="value">The variable value.</param>
+    public static void SetGlobalVar(string name, double value)
+    {
+        if (!GlobalVariables.ContainsKey(name))
         {
-            Const = 0,
-            Unary,
-            Binary
+            name = name.StartsWith(VarPrefixStr) ? name : $"{VarPrefixStr}{name}";
+            GlobalVariables.Add(name, value);
+        }
+    }
+
+    /// <summary>
+    /// Sets an interpreter context to be use un variables resolution.
+    /// </summary>
+    /// <param name="name">The name of the context..</param>
+    /// <param name="interpreterContext">An object that implements Hef.Math.IInterpreterContext. Null to re;ove context.</param>
+    public void SetContext(string name, IInterpreterContext? interpreterContext)
+    {
+        if (_namedContext is null)
+        {
+            return;
+        }
+        if (interpreterContext == null)
+        {
+            _namedContext.Remove(name);
+        }
+        else
+        {
+            _namedContext[name] = interpreterContext;
+        }
+    }
+
+    /// <summary>
+    /// Compute the formula passed as argument.
+    /// </summary>
+    /// <param name="infix">The formula to resolve.</param>
+    /// <returns></returns>
+    public double Calculate(string infix)
+    {
+        var root = Cache.GetOrInitializeValue(infix, InfixToNode);
+        return root.GetValue(this);
+    }
+
+    /// <summary>
+    /// Forces the cache to be cleard.
+    /// </summary>
+    public static void ForceClearCache()
+    {
+        Cache.Clear();
+    }
+
+    /// <summary>
+    /// Dispose this instance of Interpreter.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
+
+    #region Private functions
+
+    private static int ComparePrecedence(string a, string b)
+    {
+        if (!Operators.ContainsKey(a))
+        {
+            throw new Exception($"Operator '{a}' is not registered.");
         }
 
-        #endregion
-
-        #region Constructors
-
-        static Interpreter()
+        if (!Operators.ContainsKey(b))
         {
-            Interpreter.cache = new Hef.Collection.Cache<string, Node>(64);
-            Interpreter.globalVariables = new System.Collections.Generic.Dictionary<string, double>();
-            Interpreter.Random = new System.Random();
-
-            Interpreter.LoadOperators();
+            throw new Exception($"Operator '{b}' is not registered.");
         }
 
-        /// <summary>
-        /// Instantiates a new instance of Interpreter.
-        /// </summary>
-        public Interpreter()
+        return Operators[b].Priority - Operators[a].Priority;
+    }
+
+    private static bool IsAlpha(char c)
+    {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
+
+    private static bool IsNumeric(char c)
+    {
+        return c >= '0' && c <= '9';
+    }
+
+    private static int SkipString(string value, int index)
+    {
+        // Also allow dots for names context cariable access `$xxx.yyy`.
+        // [#12] Operators with names containing digits fail -> Fixed by adding IsNumeric().
+        while (index < value.Length && (IsAlpha(value[index]) || IsNumeric(value[index]) || value[index] == '.'))
         {
-            this.variables = new System.Collections.Generic.Dictionary<string, double>();
-            this.namedContext = new System.Collections.Generic.Dictionary<string, IInterpreterContext>();
+            ++index;
         }
 
-        #endregion
+        return index;
+    }
 
-        #region Destructor
+    private static bool IsSpecial(char c)
+    {
+        return !IsNumeric(c) && !IsAlpha(c) && c != OpenBracketChar && c != ClosingBracketChar && c != VarPrefixChar && c != WhiteSpaceChar && c != '.' && c != '±';
+    }
 
-        /// <summary>
-        /// Destructor.
-        /// </summary>
-        ~Interpreter()
+    private static int SkipSpecial(string value, int index)
+    {
+        while (index < value.Length && IsSpecial(value[index]))
         {
-            this.Dispose(false);
+            ++index;
         }
 
-        #endregion
+        return index;
+    }
 
-        #region Public Functions
+    private static string InfixToRpn(string infix)
+    {
+        // Replace comma separator with white space for function-like use of operators.
+        infix = infix.Replace(CommaSeparatorChar, WhiteSpaceChar);
 
-        /// <summary>
-        /// Sets a variable to be used in the formula.
-        /// </summary>
-        /// <param name="name">The variable name.</param>
-        /// <param name="value">The variable value.</param>
-        public void SetVar(string name, double value)
+        // Add operator markers.
+        for (var index = 0; index < infix.Length; ++index)
         {
-            name = name.StartsWith(Interpreter.VarPrefixStr) ? name : string.Format("{0}{1}", Interpreter.VarPrefixStr, name);
-
-            if (!this.variables.ContainsKey(name))
+            if (infix[index] == VarPrefixChar)
             {
-                this.variables.Add(name, value);
+                index = SkipString(infix, index + 2);
             }
-            else
+            else if (IsAlpha(infix[index]))
             {
-                this.variables[name] = value;
+                infix = infix.Insert(index, LongOpMark0Str);
+                index = SkipString(infix, index + 2);
+                infix = infix.Insert(index, LongOpMark1Str);
+            }
+            else if (IsSpecial(infix[index]))
+            {
+                infix = infix.Insert(index, LongOpMark0Str);
+                index = SkipSpecial(infix, index + 2);
+                infix = infix.Insert(index, LongOpMark1Str);
             }
         }
 
-        /// <summary>
-        /// Sets a variable to be used in the formula. This variable will be global to ALL interpreters.
-        /// </summary>
-        /// <param name="name">The variable name.</param>
-        /// <param name="value">The variable value.</param>
-        public static void SetGlobalVar(string name, double value)
+        // Add blank spaces where needed.
+        for (var index = 0; index < infix.Length; ++index)
         {
-            if (!Interpreter.globalVariables.ContainsKey(name))
+            if (Operators.ContainsKey(infix[index].ToString()) || infix[index] == VarPrefixChar || infix[index] == OpMarkChar
+                || infix[index] == OpenBracketChar || infix[index] == ClosingBracketChar)
             {
-                name = name.StartsWith(Interpreter.VarPrefixStr) ? name : string.Format("{0}{1}", Interpreter.VarPrefixStr, name);
-                Interpreter.globalVariables.Add(name, value);
-            }
-        }
-
-        /// <summary>
-        /// Sets an interpreter context to be use un variables resolution.
-        /// </summary>
-        /// <param name="name">The name of the context..</param>
-        /// <param name="interpreterContext">An object that implements Hef.Math.IInterpreterContext. Null to re;ove context.</param>
-        public void SetContext(string name, IInterpreterContext interpreterContext)
-        {
-            if (interpreterContext == null)
-            {
-                this.namedContext.Remove(name);
-            }
-            else
-            {
-                if (!this.namedContext.ContainsKey(name))
+                // Ignore variable. It would be a mess to find an operator in the middle of a variable name...
+                if (infix[index] == VarPrefixChar)
                 {
-                    this.namedContext.Add(name, interpreterContext);
-                }
-                else
-                {
-                    this.namedContext[name] = interpreterContext;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Compute the formula passed as argument.
-        /// </summary>
-        /// <param name="infix">The formula to resolve.</param>
-        /// <returns></returns>
-        public double Calculate(string infix)
-        {
-            Node root = Interpreter.cache.GetOrInitializeValue(infix, Interpreter.InfixToNode);
-            return root.GetValue(this);
-        }
-
-        /// <summary>
-        /// Forces the cache to be cleard.
-        /// </summary>
-        public static void ForceClearCache()
-        {
-            Interpreter.cache.Clear();
-        }
-
-        /// <summary>
-        /// Dispose this instance of Interpreter.
-        /// </summary>
-        public void Dispose()
-        {
-            this.Dispose(true);
-            System.GC.SuppressFinalize(this);
-        }
-
-        #endregion
-
-        #region Private functions
-
-        private static int ComparePrecedence(string a, string b)
-        {
-            if (!Interpreter.operators.ContainsKey(a))
-            {
-                throw new System.Exception(string.Format("Operator '{0}' is not registered.", a));
-            }
-
-            if (!Interpreter.operators.ContainsKey(b))
-            {
-                throw new System.Exception(string.Format("Operator '{0}' is not registered.", b));
-            }
-
-            return Interpreter.operators[b].Priority - Interpreter.operators[a].Priority;
-        }
-
-        private static bool IsAlpha(char c)
-        {
-            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-        }
-
-        private static bool IsNumeric(char c)
-        {
-            return c >= '0' && c <= '9';
-        }
-
-        private static int SkipString(string value, int index)
-        {
-            // Also alow dots for names context cariable access `$xxx.yyy`.
-            // [#12] Operators with names containing digits fail -> Fixed by adding IsNumeric().
-            while (index < value.Length && (Interpreter.IsAlpha(value[index]) || Interpreter.IsNumeric(value[index]) || value[index] == '.'))
-            {
-                ++index;
-            }
-
-            return index;
-        }
-
-        private static bool IsSpecial(char c)
-        {
-            return !IsNumeric(c) && !IsAlpha(c) && c != OpenBracketChar && c != ClosingBracketChar && c != VarPrefixChar && c != WhiteSpaceChar && c != '.' && c != '±';
-        }
-
-        private static int SkipSpecial(string value, int index)
-        {
-            while (index < value.Length && IsSpecial(value[index]))
-            {
-                ++index;
-            }
-
-            return index;
-        }
-
-        private static string InfixToRpn(string infix)
-        {
-            // Replace comma separator with white space for function-like use of operators.
-            infix = infix.Replace(Interpreter.CommaSeparatorChar, Interpreter.WhiteSpaceChar);
-
-            // Add operator markers.
-            for (int index = 0; index < infix.Length; ++index)
-            {
-                if (infix[index] == Interpreter.VarPrefixChar)
-                {
-                    index = Interpreter.SkipString(infix, index + 2);
-                }
-                else if (Interpreter.IsAlpha(infix[index]))
-                {
-                    infix = infix.Insert(index, Interpreter.LongOpMark0Str);
-                    index = Interpreter.SkipString(infix, index + 2);
-                    infix = infix.Insert(index, Interpreter.LongOpMark1Str);
-                }
-                else if (Interpreter.IsSpecial(infix[index]))
-                {
-                    infix = infix.Insert(index, Interpreter.LongOpMark0Str);
-                    index = Interpreter.SkipSpecial(infix, index + 2);
-                    infix = infix.Insert(index, Interpreter.LongOpMark1Str);
-                }
-            }
-
-            // Add blank spaces where needed.
-            for (int index = 0; index < infix.Length; ++index)
-            {
-                if (Interpreter.operators.ContainsKey(infix[index].ToString()) || infix[index] == Interpreter.VarPrefixChar || infix[index] == Interpreter.OpMarkChar
-                    || infix[index] == Interpreter.OpenBracketChar || infix[index] == Interpreter.ClosingBracketChar)
-                {
-                    // Ignore variable. It would be a mess to find an operator in the middle of a variable name...
-                    if (infix[index] == Interpreter.VarPrefixChar)
-                    {
-                        index = Interpreter.SkipString(infix, index + 2);
-                        //continue;
-                    }
-
-                    if (index != 0 && infix[index - 1] != Interpreter.WhiteSpaceChar)
-                    {
-                        infix = infix.Insert(index, Interpreter.WhiteSpaceStr);
-                    }
-
-                    // Handle long operators.
-                    int jndex = index;
-                    if (infix[index] == Interpreter.OpMarkChar)
-                    {
-                        jndex = infix.IndexOf(Interpreter.OpMarkChar, index + 1);
-                    }
-
-                    if (jndex != infix.Length - 1 && infix[jndex + 1] != Interpreter.OpMarkChar)
-                    {
-                        infix = infix.Insert(jndex + 1, Interpreter.WhiteSpaceStr);
-                    }
-
-                    index = jndex;
-                }
-            }
-
-            // Trim long op mark and white spaces.
-            infix = System.Text.RegularExpressions.Regex.Replace(infix.Replace(Interpreter.OpMarkStr, string.Empty), @"\s+", " ");
-            infix = infix.TrimStart(WhiteSpaceChar);
-            infix = infix.TrimEnd(WhiteSpaceChar);
-
-            string[] tokens = infix.Split(Interpreter.WhiteSpaceChar);
-            System.Collections.Generic.List<string> list = new System.Collections.Generic.List<string>();     //TODO: static
-            System.Collections.Generic.Stack<string> stack = new System.Collections.Generic.Stack<string>();  //TODO: static
-
-            for (int tokenIndex = 0; tokenIndex < tokens.Length; ++tokenIndex)
-            {
-                string token = tokens[tokenIndex];
-
-                if (string.IsNullOrEmpty(token) || token == Interpreter.WhiteSpaceStr)
-                {
-                    continue;
+                    index = SkipString(infix, index + 2);
+                    //continue;
                 }
 
-                if (Interpreter.operators.ContainsKey(token))
+                if (index != 0 && infix[index - 1] != WhiteSpaceChar)
                 {
-                    while (stack.Count > 0 && Interpreter.operators.ContainsKey(stack.Peek()))
-                    {
-                        if (ComparePrecedence(token, stack.Peek()) < 0)
-                        {
-                            list.Add(stack.Pop());
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    stack.Push(token);
+                    infix = infix.Insert(index, WhiteSpaceStr);
                 }
-                else if (token == Interpreter.OpenBracketStr)
+
+                // Handle long operators.
+                var jndex = index;
+                if (infix[index] == OpMarkChar)
                 {
-                    stack.Push(token);
+                    jndex = infix.IndexOf(OpMarkChar, index + 1);
                 }
-                else if (token == Interpreter.ClosingBracketStr)
+
+                if (jndex != infix.Length - 1 && infix[jndex + 1] != OpMarkChar)
                 {
-                    while (stack.Count > 0 && stack.Peek() != Interpreter.OpenBracketStr)
+                    infix = infix.Insert(jndex + 1, WhiteSpaceStr);
+                }
+
+                index = jndex;
+            }
+        }
+
+        // Trim long op mark and white spaces.
+        infix = System.Text.RegularExpressions.Regex.Replace(infix.Replace(OpMarkStr, string.Empty), @"\s+", " ");
+        infix = infix.TrimStart(WhiteSpaceChar);
+        infix = infix.TrimEnd(WhiteSpaceChar);
+
+        var tokens = infix.Split(WhiteSpaceChar);
+        var list = new List<string>();     //TODO: static
+        var stack = new Stack<string>();  //TODO: static
+
+        foreach (var token in tokens)
+        {
+            if (string.IsNullOrEmpty(token) || token == WhiteSpaceStr)
+            {
+                continue;
+            }
+
+            if (Operators.ContainsKey(token))
+            {
+                while (stack.Count > 0 && Operators.ContainsKey(stack.Peek()))
+                {
+                    if (ComparePrecedence(token, stack.Peek()) < 0)
                     {
                         list.Add(stack.Pop());
+                        continue;
                     }
 
-                    stack.Pop();
+                    break;
                 }
-                else
-                {
-                    list.Add(token);
-                }
-            }
 
-            while (stack.Count > 0)
+                stack.Push(token);
+            }
+            else if (token == OpenBracketStr)
             {
-                list.Add(stack.Pop());
+                stack.Push(token);
             }
+            else if (token == ClosingBracketStr)
+            {
+                while (stack.Count > 0 && stack.Peek() != OpenBracketStr)
+                {
+                    list.Add(stack.Pop());
+                }
 
-            string rpn = string.Join(Interpreter.WhiteSpaceStr, list.ToArray());
-
-            return rpn;
+                stack.Pop();
+            }
+            else
+            {
+                list.Add(token);
+            }
         }
 
-        private static Node RpnToNode(string rpn)
+        while (stack.Count > 0)
         {
-            string[] tokens = rpn.Split(Interpreter.WhiteSpaceChar);
-            System.Collections.Generic.Stack<Node> values = new System.Collections.Generic.Stack<Node>();
+            list.Add(stack.Pop());
+        }
 
-            for (int tokenIndex = 0; tokenIndex < tokens.Length; ++tokenIndex)
+        var rpn = string.Join(WhiteSpaceStr, list.ToArray());
+
+        return rpn;
+    }
+
+    private static Node RpnToNode(string rpn)
+    {
+        var tokens = rpn.Split(WhiteSpaceChar);
+        var values = new Stack<Node>();
+
+        foreach (var token in tokens)
+        {
+            if (Operators.TryGetValue(token, out var @operator))
             {
-                string token = tokens[tokenIndex];
-
-                if (Interpreter.operators.ContainsKey(token))
+                if (@operator.NodeType.IsSubclassOf(typeof (ZeroNode)))
                 {
-                    OperatorDescriptor opeDesc = Interpreter.operators[token];
-
-                    if (opeDesc.NodeType != null)
+                    var constructorInfo = @operator.NodeType.GetConstructor(Type.EmptyTypes);
+                    if (constructorInfo != null)
                     {
-                        if (opeDesc.NodeType.IsSubclassOf(typeof (ZeroNode)))
-                        {
-                            System.Reflection.ConstructorInfo constructorInfo = opeDesc.NodeType.GetConstructor(new System.Type[0]);
-                            if (constructorInfo != null)
-                            {
-                                Node node = (Node) constructorInfo.Invoke(new object[0]);
-                                values.Push(node);
-                            }
-                        }
-
-                        if (opeDesc.NodeType.IsSubclassOf(typeof (UnaryNode)))
-                        {
-                            System.Reflection.ConstructorInfo constructorInfo = opeDesc.NodeType.GetConstructor(new [] {typeof (Node)});
-                            if (constructorInfo != null)
-                            {
-                                Node node = (Node) constructorInfo.Invoke(new object[] {values.Pop()});
-                                values.Push(node);
-                            }
-                        }
-
-                        if (opeDesc.NodeType.IsSubclassOf(typeof (BinaryNode)))
-                        {
-                            System.Reflection.ConstructorInfo constructorInfo = opeDesc.NodeType.GetConstructor(new [] {typeof (Node), typeof (Node)});
-                            if (constructorInfo != null)
-                            {
-                                Node right = values.Pop();
-                                Node left = values.Pop();
-                                Node node = (Node) constructorInfo.Invoke(new object[] {left, right});
-                                values.Push(node);
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    double value;
-                    if (double.TryParse(token, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out value))
-                    {
-                        Node node = new ValueNode(value);
+                        var node = (Node) constructorInfo.Invoke(Array.Empty<object>());
                         values.Push(node);
                     }
-                    else
+                }
+
+                if (@operator.NodeType.IsSubclassOf(typeof (UnaryNode)))
+                {
+                    var constructorInfo = @operator.NodeType.GetConstructor(new [] {typeof (Node)});
+                    if (constructorInfo != null)
                     {
-                        Node node = new VarNode(token);
+                        var node = (Node) constructorInfo.Invoke(new object[] {values.Pop()});
+                        values.Push(node);
+                    }
+                }
+
+                if (@operator.NodeType.IsSubclassOf(typeof (BinaryNode)))
+                {
+                    var constructorInfo = @operator.NodeType.GetConstructor(new [] {typeof (Node), typeof (Node)});
+                    if (constructorInfo != null)
+                    {
+                        var right = values.Pop();
+                        var left = values.Pop();
+                        var node = (Node) constructorInfo.Invoke(new object[] {left, right});
                         values.Push(node);
                     }
                 }
             }
-
-            if (values.Count != 1)
+            else
             {
-                throw new System.InvalidOperationException("Cannot calculate formula");
-            }
-
-            return values.Pop();
-        }
-
-        private static Node InfixToNode(string infix)
-        {
-            return Interpreter.RpnToNode(Interpreter.InfixToRpn(infix));
-        }
-
-        private static void LoadOperators()
-        {
-            System.Type nodeType = typeof(Node);
-            System.Reflection.Assembly assembly = System.Reflection.Assembly.GetAssembly(nodeType);
-            System.Type[] allTypes = assembly.GetTypes();
-
-            for (int i = 0; i < allTypes.Length; i++)
-            {
-                System.Type type = allTypes[i];
-                if (type.IsSubclassOf(nodeType) && !type.IsAbstract)
+                if (double.TryParse(token, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out var value))
                 {
-                    OperatorAttribute[] attributes = (OperatorAttribute[])type.GetCustomAttributes(typeof(OperatorAttribute), true);
-                    if (attributes != null)
-                    {
-                        for (int attrIndex = 0; attrIndex < attributes.Length; attrIndex++)
-                        {
-                            OperatorAttribute operatorAttribute = attributes[attrIndex];
-                            Interpreter.operators.Add(operatorAttribute.Symbol, new OperatorDescriptor(operatorAttribute.Priority, type));
-                        }
-                    }
+                    Node node = new ValueNode(value);
+                    values.Push(node);
+                }
+                else
+                {
+                    Node node = new VarNode(token);
+                    values.Push(node);
                 }
             }
         }
 
-        private bool TryGetVariableValue(string varName, out double value)
+        if (values.Count != 1)
         {
-            // Look in local variables.
-            if (this.variables.TryGetValue(varName, out value))
+            throw new InvalidOperationException("Cannot calculate formula");
+        }
+
+        return values.Pop();
+    }
+
+    private static Node InfixToNode(string infix)
+    {
+        return RpnToNode(InfixToRpn(infix));
+    }
+
+    private static void LoadOperators()
+    {
+        var nodeType = typeof(Node);
+        var assembly = System.Reflection.Assembly.GetAssembly(nodeType);
+        var allTypes = assembly?.GetTypes();
+
+        if (allTypes is null)
+            return;
+        foreach (var type in allTypes)
+        {
+            if (!type.IsSubclassOf(nodeType) || type.IsAbstract) continue;
+            var attributes = (OperatorAttribute[])type.GetCustomAttributes(typeof(OperatorAttribute), true);
+            foreach (var operatorAttribute in attributes)
             {
-                return true;
+                Operators.Add(operatorAttribute.Symbol, new OperatorDescriptor(operatorAttribute.Priority, type));
             }
+        }
+    }
 
-            // Look in named contexts.
-            // Fixed #23 (bad regex).
-            if (System.Text.RegularExpressions.Regex.IsMatch(varName, @"\$\w+\.\w+"))
-            {
-                string contextName = varName.Substring(varName.IndexOf('$') + 1, varName.IndexOf('.') - 1);
-                string variableName = varName.Substring(varName.IndexOf('.') + 1);
-
-                if (this.namedContext.ContainsKey(contextName) &&
-                    this.namedContext[contextName].TryGetVariable(variableName, out value))
-                {
-                    return true;
-                }
-            }
-
-            // Look in global variables;
-            if (Interpreter.globalVariables.TryGetValue(varName, out value))
-            {
-                return true;
-            }
-
+    private bool TryGetVariableValue(string varName, out double value)
+    {
+        // Look in local variables.
+        if (_variables is null)
+        {
+            value = 0;
             return false;
         }
-
-        private void Dispose(bool disposing)
+            
+        if (_variables.TryGetValue(varName, out value))
         {
-            if (this.disposed)
-            {
-                return;
-            }
-
-            if (disposing)
-            {
-                if (this.variables != null)
-                {
-                    this.variables.Clear();
-                    this.variables = null;
-                }
-
-                if (this.namedContext != null)
-                {
-                    this.namedContext.Clear();
-                    this.namedContext = null;
-                }
-            }
-
-            this.disposed = true;
+            return true;
         }
 
-        #endregion
-
-        #region Inner Types
-
-        private struct OperatorDescriptor
+        // Look in named contexts.
+        // Fixed #23 (bad regex).
+        if (VariableRegex().IsMatch(varName))
         {
-            public readonly int Priority;
-            public readonly System.Type NodeType;
+            var contextName = varName.Substring(varName.IndexOf('$') + 1, varName.IndexOf('.') - 1);
+            var variableName = varName[(varName.IndexOf('.') + 1)..];
 
-            public OperatorDescriptor(int priority, System.Type nodeType)
+            if (_namedContext is not null && _namedContext.ContainsKey(contextName) && _namedContext[contextName].TryGetVariable(variableName, out value))
             {
-                Priority = priority;
-                NodeType = nodeType;
+                return true;
             }
         }
 
-        #endregion
+        // Look in global variables;
+        return GlobalVariables.TryGetValue(varName, out value);
     }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            if (_variables != null)
+            {
+                _variables.Clear();
+                _variables = null;
+            }
+
+            if (_namedContext != null)
+            {
+                _namedContext.Clear();
+                _namedContext = null;
+            }
+        }
+
+        _disposed = true;
+    }
+
+    #endregion
+
+    #region Inner Types
+
+    private struct OperatorDescriptor
+    {
+        public readonly int Priority;
+        public readonly Type NodeType;
+
+        public OperatorDescriptor(int priority, Type nodeType)
+        {
+            Priority = priority;
+            NodeType = nodeType;
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("\\$\\w+\\.\\w+")]
+    private static partial System.Text.RegularExpressions.Regex VariableRegex();
+
+    #endregion
 }

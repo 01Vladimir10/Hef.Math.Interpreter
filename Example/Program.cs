@@ -1,58 +1,55 @@
-﻿namespace Hef.Math.Example
+﻿// See https://aka.ms/new-console-template for more information
+
+using Hef.Math;
+
+Console.WriteLine("Calculator \n" +
+                         "'setv key value' to set variable\n" +
+                         "'q' to quit\n----------");
+
+var interpreter = new Interpreter();
+
+var lastResultIdx = 0;
+var stop = false;
+while (!stop)
 {
-    class Program
+    try
     {
-        static void Main(string[] args)
+        Console.Write("  : ");
+        var input = Console.ReadLine();
+        if (string.IsNullOrEmpty(input))
         {
-            System.Console.WriteLine("Calculator \n" +
-                              "'setv key value' to set variable\n" +
-                              "'q' to quit\n----------");
+        }
+        else if (input == "q" || input == "Q")
+        {
+            Console.WriteLine("Bood Bye :)");
+            stop = true;
+        }
+        else if (input.StartsWith("setv"))
+        {
+            var tokens = input.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-            Interpreter interpreter = new Interpreter();
-
-            int lastResultIdx = 0;
-            bool stop = false;
-            while (!stop)
+            double value;
+            if (tokens.Length == 3 && double.TryParse(tokens[2], out value))
             {
-                try
-                {
-                    System.Console.Write("  : ");
-                    string input = System.Console.ReadLine();
-                    if (string.IsNullOrEmpty(input))
-                    {
-                    }
-                    else if (input == "q" || input == "Q")
-                    {
-                        System.Console.WriteLine("Bood Bye :)");
-                        stop = true;
-                    }
-                    else if (input.StartsWith("setv"))
-                    {
-                        string[] tokens = input.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
-
-                        double value;
-                        if (tokens.Length == 3 && double.TryParse(tokens[2], out value))
-                        {
-                            interpreter.SetVar(tokens[1], value);
-                        }
-                        else
-                        {
-                            System.Console.WriteLine("Syntax: setv key value");
-                        }
-                    }
-                    else
-                    {
-                        double result = interpreter.Calculate(input);
-                        interpreter.SetVar(lastResultIdx.ToString(), result);
-                        System.Console.WriteLine("${1}> {0}", result, lastResultIdx);
-                        lastResultIdx++;
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    System.Console.Error.WriteLine(e);
-                }
+                interpreter.SetVar(tokens[1], value);
+            }
+            else
+            {
+                Console.WriteLine("Syntax: setv key value");
             }
         }
+        else
+        {
+            var result = interpreter.Calculate(input);
+            interpreter.SetVar(lastResultIdx.ToString(), result);
+            Console.WriteLine("${1}> {0}", result, lastResultIdx);
+            lastResultIdx++;
+        }
+    }
+    catch (Exception e)
+    {
+        Console.Error.WriteLine(e);
     }
 }
+
+Console.WriteLine("Hello, World!");

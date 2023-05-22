@@ -1,88 +1,88 @@
-﻿namespace Hef.Collection
+﻿namespace Hef.Math;
+
+internal class Cache<TKey, TValue> where TKey : notnull
 {
-    internal class Cache<TKey, TValue>
+    public delegate TValue InitializeValue(TKey key);
+
+    private readonly Dictionary<TKey, CachedValue<TValue>> _cache = new();
+
+    private readonly int _maxValues;
+
+    public Cache(int maxValues = int.MaxValue)
     {
-        public delegate TValue InitializeValue(TKey key);
+        _maxValues = maxValues;
+    }
 
-        private readonly System.Collections.Generic.Dictionary<TKey, CachedValue> cache = new System.Collections.Generic.Dictionary<TKey, CachedValue>();
-
-        private int maxValues;
-
-        public Cache(int maxValues = int.MaxValue)
+    public int Count {
+        get
         {
-            this.maxValues = maxValues;
-        }
-
-        public int Count => this.cache.Count;
-
-        public TValue GetOrInitializeValue(TKey key, InitializeValue initializeValue)
-        {
-            lock (cache)
+            lock (_cache)
             {
-                CachedValue cachedValue;
-                if (this.cache.TryGetValue(key, out cachedValue))
-                {
-                    return cachedValue.Value;
-                }
+                return _cache.Count;
+            }
+        }
+    }
 
-                TValue value = initializeValue.Invoke(key);
-                this.cache.Add(key, new CachedValue(value));
+    public TValue GetOrInitializeValue(TKey key, InitializeValue initializeValue)
+    {
+        lock (_cache)
+        {
+            if (_cache.TryGetValue(key, out var cachedValue))
+            {
+                return cachedValue.Value;
+            }
 
-                if (this.cache.Count > this.maxValues)
-                {
-                    int minID = int.MaxValue;
-                    TKey keyToRemove = default(TKey);
-                    foreach (System.Collections.Generic.KeyValuePair<TKey, CachedValue> kvp in this.cache)
-                    {
-                        if (kvp.Value.ID < minID)
-                        {
-                            minID = kvp.Value.ID;
-                            keyToRemove = kvp.Key;
-                        }
-                    }
+            var value = initializeValue.Invoke(key);
+            _cache.Add(key, new CachedValue<TValue>(value, _nextId ++));
 
-                    this.cache.Remove(keyToRemove);
-                }
+            var minId = int.MaxValue;
+            if (_cache.Count <= _maxValues) return value;
+            TKey? keyToRemove = default;
+            foreach (var kvp in _cache.Where(kvp => kvp.Value.Id < minId))
+            {
+                minId = kvp.Value.Id;
+                keyToRemove = kvp.Key;
+            }
+            if (keyToRemove is not null) 
+                _cache.Remove(keyToRemove);
+            return value;
+        }
+    }
 
-                return value;
+    public void Clear()
+    {
+        lock (_cache)
+        {
+            _cache.Clear();
+        }
+    }
+
+    internal string Dump()
+    {
+        var dump = new System.Text.StringBuilder();
+
+        lock (_cache)
+        {
+            foreach (var kvp in _cache)
+            {
+                dump.Append($"[{kvp.Value.Id}] {kvp.Key} => {kvp.Value.Value}\n");
             }
         }
 
-        public void Clear()
-        {
-            lock (cache)
-            {
-                this.cache.Clear();
-            }
-        }
+        return dump.ToString();
+    }
 
-        internal string Dump()
-        {
-            System.Text.StringBuilder dump = new System.Text.StringBuilder();
+    private int _nextId;
+}
+    
+internal struct CachedValue<TValue>
+{
+    public readonly int Id;
+    public readonly TValue Value;
 
-            lock (this.cache)
-            {
-                foreach (System.Collections.Generic.KeyValuePair<TKey, CachedValue> kvp in this.cache)
-                {
-                    dump.AppendFormat("[{0}] {1} => {2}\n", kvp.Value.ID, kvp.Key, kvp.Value.Value);
-                }
-            }
-
-            return dump.ToString();
-        }
-
-        private struct CachedValue
-        {
-            private static int nextID = 0;
-
-            public readonly int ID;
-            public readonly TValue Value;
-
-            public CachedValue(TValue value)
-            {
-                this.ID = CachedValue.nextID++;
-                Value = value;
-            }
-        }
+    public CachedValue(TValue value, int nextId)
+    {
+        Id = nextId;
+        Value = value;
     }
 }

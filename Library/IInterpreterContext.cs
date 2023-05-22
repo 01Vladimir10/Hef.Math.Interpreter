@@ -20,19 +20,18 @@
 // SOFTWARE.
 #endregion
 
-namespace Hef.Math
+namespace Hef.Math;
+
+/// <summary>
+/// Provides functions to resolve variables used in an interpreter formula.
+/// </summary>
+public interface IInterpreterContext
 {
     /// <summary>
-    /// Provides functions to resolve variables used in an interpreter formula.
+    /// Gets a variable value from its name.
     /// </summary>
-    public interface IInterpreterContext
-    {
-        /// <summary>
-        /// Gets a variable value from its name.
-        /// </summary>
-        /// <param name="name">The name of the variable to get.</param>
-        /// <param name="value">The value returned by the object that implements the interface.</param>
-        /// <returns></returns>
-        bool TryGetVariable(string name, out double value);
-    }
+    /// <param name="name">The name of the variable to get.</param>
+    /// <param name="value">The value returned by the object that implements the interface.</param>
+    /// <returns></returns>
+    bool TryGetVariable(string name, out double value);
 }
