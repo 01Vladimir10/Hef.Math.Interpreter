@@ -23,7 +23,7 @@ jobs:
     - name: Test
       run: cd Test && dotnet run
     - name: Pack
-      run: cd Library && dotnet pack --configuration Release
+      run: cd Library && dotnet pack --configuration Release -p:PackageID=Hef.Math.Interpreter.NetCore
     - name: Publish 
       run: dotnet nuget push Library/bin/Release/*.nupkg -k ${{secrets.PAT}} -s https://nuget.pkg.github.com/Super-Lagos/index.json
       
