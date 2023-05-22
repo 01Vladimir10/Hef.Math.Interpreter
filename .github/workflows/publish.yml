@@ -24,6 +24,6 @@ jobs:
       run: cd Test && dotnet run
     - name: Pack
       run: cd Library && dotnet pack --configuration Release
-    - name: Publish
+    - name: Publish 
       run: dotnet nuget push Library/bin/Release/*.nupkg -k ${{secrets.PAT}} -s https://nuget.pkg.github.com/Super-Lagos/index.json
       
