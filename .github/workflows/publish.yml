@@ -16,9 +16,6 @@ jobs:
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: 7.0.x
-        source-url: https://nuget.pkg.github.com/Super-Lagos/index.json
-      env:
-        NUGET_AUTH_TOKEN: ${{secrets.PAT}}
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
@@ -28,5 +25,5 @@ jobs:
     - name: Pack
       run: cd Library && dotnet pack --configuration Release
     - name: Publish
-      run: dotnet nuget push Library/bin/Release/*.nupkg
+      run: dotnet nuget push Library/bin/Release/*.nupkg -k ${{secrets.PAT}} -s https://nuget.pkg.github.com/Super-Lagos/index.json
       
